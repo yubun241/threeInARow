@@ -78,8 +78,8 @@
   .controls{ display:flex; gap:8px; margin-bottom:12px; }
   .controls button.action{ flex:1; }
   #saveResetBtn{ background: linear-gradient(180deg,#ffc35a,#e89a1d); }
-  #exportAllBtn, #exportSimBtn, #resetQBtn{ background:#2a2f38; color:var(--text-primary); border:1px solid #383e4a; }
-  #exportAllBtn:disabled, #exportSimBtn:disabled{ opacity:.4; cursor:not-allowed; }
+  #exportAllBtn, #resetQBtn{ background:#2a2f38; color:var(--text-primary); border:1px solid #383e4a; }
+  #exportAllBtn:disabled{ opacity:.4; cursor:not-allowed; }
   button.action:active{ transform:translateY(1px); }
   button.action:focus-visible{ outline:2px solid var(--circle); outline-offset:2px; }
 
@@ -177,7 +177,6 @@
     <div class="segmented" id="modeSeg">
       <button class="seg-btn active" data-value="pvp">対人</button>
       <button class="seg-btn" data-value="pvc">対CPU</button>
-      <button class="seg-btn" data-value="sim">シミュレーション</button>
       <button class="seg-btn" data-value="train">ML学習</button>
     </div>
   </div>
@@ -195,24 +194,6 @@
       <option value="minimax" selected>ミニマックス（強・先読みAI）</option>
       <option value="ml">Q学習（学習型・学習量に依存）</option>
     </select>
-  </div>
-
-  <div class="field" id="simOptions" hidden>
-    <label class="field-label">◯ の戦略</label>
-    <select id="simStrategyO" class="select">
-      <option value="random">ランダム</option>
-      <option value="minimax" selected>ミニマックス（強）</option>
-      <option value="ml">Q学習エージェント</option>
-    </select>
-    <label class="field-label" style="margin-top:12px;">✖ の戦略</label>
-    <select id="simStrategyX" class="select">
-      <option value="random" selected>ランダム</option>
-      <option value="minimax">ミニマックス（強）</option>
-      <option value="ml">Q学習エージェント</option>
-    </select>
-    <label class="field-label" style="margin-top:12px;">対局回数</label>
-    <input type="number" id="simEpisodes" class="select" value="100" min="1" max="2000">
-    <p class="rule-note" style="margin-top:8px;">現在のQテーブルで対局します（このモードではQテーブルは更新されません）。</p>
   </div>
 
   <div class="field" id="trainOptions" hidden>
@@ -243,18 +224,7 @@
     <button class="action" id="exportAllBtn">Export History</button>
   </div>
 
-  <p class="rule-note">薄く点滅している印は、その手番のプレイヤーが次に置くと消える印です。対局を終えると CSV（player, hand, timestamp, x, y）がダウンロードされます。</p>
-</div>
-
-<!-- ===================== シミュレーション結果画面 ===================== -->
-<div class="cabinet" id="simResultPanel" hidden>
-  <button class="back-link" id="backFromSimBtn">← 設定に戻る</button>
-  <header><h1 class="mono">SIMULATION RESULT</h1></header>
-  <table class="result-table" id="simResultTable"></table>
-  <div class="controls">
-    <button class="action" id="exportSimBtn">Export Results CSV</button>
-    <button class="action" id="rerunSimBtn">同条件で再実行</button>
-  </div>
+  <p class="rule-note">薄く点滅している印は、その手番のプレイヤーが次に置くと消える印です。対局ログは自動的に履歴へ保存されます（ファイルは自動でダウンロードされません）。CSVが欲しい場合は Save &amp; Reset または Export History を押してください。</p>
 </div>
 
 <!-- ===================== 学習結果画面 ===================== -->
@@ -464,18 +434,13 @@ function simulateGame(stratO, stratX, maxPlies){
   const titleStartBtn = document.getElementById('titleStartBtn');
   const setupPanel = document.getElementById('setupPanel');
   const gamePanel = document.getElementById('gamePanel');
-  const simResultPanel = document.getElementById('simResultPanel');
   const trainResultPanel = document.getElementById('trainResultPanel');
 
   const modeSeg = document.getElementById('modeSeg');
   const firstSeg = document.getElementById('firstSeg');
   const pvcOptions = document.getElementById('pvcOptions');
-  const simOptions = document.getElementById('simOptions');
   const trainOptions = document.getElementById('trainOptions');
   const cpuDifficultySelect = document.getElementById('cpuDifficultySelect');
-  const simStrategyO = document.getElementById('simStrategyO');
-  const simStrategyX = document.getElementById('simStrategyX');
-  const simEpisodesInput = document.getElementById('simEpisodes');
   const trainEpisodesInput = document.getElementById('trainEpisodes');
   const startBtn = document.getElementById('startBtn');
   const qStatusNote = document.getElementById('qStatusNote');
@@ -491,11 +456,6 @@ function simulateGame(stratO, stratX, maxPlies){
   const winTextEl = document.getElementById('winText');
   const playAgainBtn = document.getElementById('playAgainBtn');
   const toastEl = document.getElementById('toast');
-
-  const simResultTable = document.getElementById('simResultTable');
-  const exportSimBtn = document.getElementById('exportSimBtn');
-  const rerunSimBtn = document.getElementById('rerunSimBtn');
-  const backFromSimBtn = document.getElementById('backFromSimBtn');
 
   const trainResultTable = document.getElementById('trainResultTable');
   const trainProgressFill = document.getElementById('trainProgressFill');
@@ -570,16 +530,9 @@ function simulateGame(stratO, stratX, maxPlies){
   function panelShow(el){ el.hidden = false; }
   function panelHide(el){ el.hidden = true; }
   function showOnly(panel){
-    [titlePanel, setupPanel, gamePanel, simResultPanel, trainResultPanel].forEach(p => p.hidden = (p !== panel));
+    [titlePanel, setupPanel, gamePanel, trainResultPanel].forEach(p => p.hidden = (p !== panel));
   }
   titleStartBtn.addEventListener('click', () => showOnly(setupPanel));
-
-  function strategyFor(kind, depthLimit, timeLimitMs){
-    if(kind === 'random') return (s) => randomMove(s);
-    if(kind === 'minimax') return (s) => chooseMinimaxMove(s, depthLimit || 6, timeLimitMs || 80);
-    if(kind === 'ml') return (s) => chooseQAction(s, qtable, 0);
-    return (s) => randomMove(s);
-  }
 
   /* ===================== セットアップ画面の挙動 ===================== */
   let currentMode = 'pvp';
@@ -590,11 +543,10 @@ function simulateGame(stratO, stratX, maxPlies){
     if(!btn) return;
     currentMode = btn.dataset.value;
     [...modeSeg.children].forEach(b => b.classList.toggle('active', b === btn));
-    panelHide(pvcOptions); panelHide(simOptions); panelHide(trainOptions);
+    panelHide(pvcOptions); panelHide(trainOptions);
     if(currentMode === 'pvc') panelShow(pvcOptions);
-    if(currentMode === 'sim') panelShow(simOptions);
     if(currentMode === 'train') panelShow(trainOptions);
-    startBtn.textContent = currentMode === 'sim' ? '実行' : (currentMode === 'train' ? '学習を実行' : '開始');
+    startBtn.textContent = currentMode === 'train' ? '学習を実行' : '開始';
   });
   firstSeg.addEventListener('click', (e) => {
     const btn = e.target.closest('.seg-btn');
@@ -605,12 +557,10 @@ function simulateGame(stratO, stratX, maxPlies){
 
   startBtn.addEventListener('click', () => {
     if(currentMode === 'pvp' || currentMode === 'pvc') startLiveGame();
-    else if(currentMode === 'sim') runSimulation();
     else if(currentMode === 'train') runTraining();
   });
 
   backFromGameBtn.addEventListener('click', () => showOnly(setupPanel));
-  backFromSimBtn.addEventListener('click', () => showOnly(setupPanel));
   backFromTrainBtn.addEventListener('click', () => showOnly(setupPanel));
 
   /* ===================== 対人 / 対CPU ===================== */
@@ -714,10 +664,8 @@ function simulateGame(stratO, stratX, maxPlies){
   }
 
   function finalizeAndShowResult(text, colorClass){
-    const filename = `game_log_${formatTimestampForFilename(new Date())}.csv`;
     if(sessionLog.length > 0){
-      downloadCSV(filename, ['player','hand','timestamp','x','y'], sessionLog);
-      persistSessionLog(sessionLog);
+      persistSessionLog(sessionLog); // 履歴には残すが、ファイルは自動では落とさない
     }
     winTextEl.textContent = text;
     winTextEl.classList.toggle('circle', colorClass === 'circle');
@@ -740,58 +688,6 @@ function simulateGame(stratO, stratX, maxPlies){
     const rows = [];
     all.forEach((session, idx) => { session.forEach(r => rows.push([idx + 1, ...r])); });
     downloadCSV(`tictactoe_history_${formatTimestampForFilename(new Date())}.csv`, ['game_no','player','hand','timestamp','x','y'], rows);
-  });
-
-  /* ===================== シミュレーションモード ===================== */
-  let lastSimResults = [];
-  rerunSimBtn.addEventListener('click', runSimulation);
-
-  function runSimulation(){
-    const kindO = simStrategyO.value, kindX = simStrategyX.value;
-    const n = Math.max(1, Math.min(2000, parseInt(simEpisodesInput.value, 10) || 1));
-    const stratO = strategyFor(kindO, 5, 60);
-    const stratX = strategyFor(kindX, 5, 60);
-
-    let oWin=0, xWin=0, draw=0, totalPlies=0;
-    lastSimResults = [];
-    const BATCH = 25;
-    let i = 0;
-
-    showOnly(simResultPanel);
-    simResultTable.innerHTML = `<tr><td class="label">実行中…</td><td class="val">0 / ${n}</td></tr>`;
-
-    function step(){
-      const end = Math.min(i + BATCH, n);
-      for(; i < end; i++){
-        const res = simulateGame(stratO, stratX, 80);
-        if(res.winner === '◯') oWin++; else if(res.winner === '✖') xWin++; else draw++;
-        totalPlies += res.plies;
-        lastSimResults.push([i+1, res.winner || 'draw', res.plies]);
-      }
-      simResultTable.innerHTML = `<tr><td class="label">進行</td><td class="val">${i} / ${n}</td></tr>`;
-      if(i < n){ setTimeout(step, 0); }
-      else { renderSimResult(kindO, kindX, n, oWin, xWin, draw, totalPlies); }
-    }
-    step();
-  }
-
-  function renderSimResult(kindO, kindX, n, oWin, xWin, draw, totalPlies){
-    const label = { random:'ランダム', minimax:'ミニマックス', ml:'Q学習' };
-    simResultTable.innerHTML = `
-      <tr><td class="label">対戦条件</td><td class="val">◯=${label[kindO]} / ✖=${label[kindX]}</td></tr>
-      <tr><td class="label">対局数</td><td class="val">${n}</td></tr>
-      <tr><td class="label">◯ の勝ち</td><td class="val">${oWin}（${(oWin/n*100).toFixed(1)}%）</td></tr>
-      <tr><td class="label">✖ の勝ち</td><td class="val">${xWin}（${(xWin/n*100).toFixed(1)}%）</td></tr>
-      <tr><td class="label">引き分け（ループ/上限）</td><td class="val">${draw}（${(draw/n*100).toFixed(1)}%）</td></tr>
-      <tr><td class="label">平均手数</td><td class="val">${(totalPlies/n).toFixed(1)}</td></tr>
-    `;
-    exportSimBtn.disabled = false;
-  }
-
-  exportSimBtn.addEventListener('click', () => {
-    if(lastSimResults.length === 0) return;
-    downloadCSV(`tictactoe_simulation_${formatTimestampForFilename(new Date())}.csv`,
-      ['game_no','winner','plies'], lastSimResults);
   });
 
   /* ===================== ML学習モード（Q学習） ===================== */
