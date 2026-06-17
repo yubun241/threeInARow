@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<link rel="icon" href="data:,">
+<title>3手制限 三目並べ — CPU / シミュレーション / ML</title>
+<style>
+  :root{
+    --bg-base:#0f1115;
+    --bg-panel:#181b21;
+    --bg-cell:#1d212a;
+    --bg-cell-hover:#242935;
+    --border:#2a2f38;
+    --text-primary:#eef0f3;
+    --text-dim:#7c8492;
+    --circle:#29d6c8;
+    --cross:#ffb238;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; }
+  body{
+    background:var(--bg-base);
+    color:var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    padding:24px 12px;
+  }
+  .mono{ font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
+  .cabinet{
+    width:min(460px, 92vw);
+    background:var(--bg-panel);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding: clamp(18px,4vw,28px);
+    box-shadow: 0 20px 60px -20px rgba(0,0,0,.6);
+  }
+  [hidden]{ display:none !important; }
+
+  header h1{ margin:0; font-size: clamp(18px,4vw,22px); letter-spacing:.02em; }
+  header h1 .mono{ color:var(--text-dim); font-size:.6em; }
+  header p.subtitle{ margin:6px 0 0; color:var(--text-dim); font-size:12px; }
+
+  .back-link{
+    background:none; border:none; color:var(--text-dim); font-size:12px;
+    cursor:pointer; padding:0; margin-bottom:12px; font-family:inherit; text-decoration:underline;
+  }
+  .back-link:hover{ color:var(--text-primary); }
+
+  .field{ margin-bottom:16px; }
+  .field > label.field-label{ font-size:11px; color:var(--text-dim); display:block; margin-bottom:7px; letter-spacing:.03em; }
+
+  .segmented{ display:flex; gap:6px; flex-wrap:wrap; }
+  .seg-btn{
+    flex:1; min-width:84px; padding:9px 8px; border-radius:8px; border:1px solid var(--border);
+    background:#1d212a; color:var(--text-dim); font-size:12px; cursor:pointer; font-family:inherit;
+  }
+  .seg-btn.active{ background:#242935; color:var(--text-primary); border-color:#3a4150; }
+  .seg-btn:hover{ background:#242935; }
+  .seg-btn:focus-visible{ outline:2px solid var(--circle); outline-offset:2px; }
+
+  .select{
+    width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--border);
+    background:#1d212a; color:var(--text-primary); font-size:13px; font-family:inherit;
+  }
+  .checkbox-row{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); margin-top:10px; }
+
+  button.action{
+    padding:10px 0; border:none; border-radius:8px; font-weight:600; font-size:13px;
+    cursor:pointer; color:#101216; font-family:inherit;
+  }
+  button.action.wide{ width:100%; }
+  #startBtn{ background: linear-gradient(180deg,#3be3d4,#1fb8ab); margin-top:6px; }
+  .controls{ display:flex; gap:8px; margin-bottom:12px; }
+  .controls button.action{ flex:1; }
+  #saveResetBtn{ background: linear-gradient(180deg,#ffc35a,#e89a1d); }
+  #exportAllBtn, #exportSimBtn, #resetQBtn{ background:#2a2f38; color:var(--text-primary); border:1px solid #383e4a; }
+  #exportAllBtn:disabled, #exportSimBtn:disabled{ opacity:.4; cursor:not-allowed; }
+  button.action:active{ transform:translateY(1px); }
+  button.action:focus-visible{ outline:2px solid var(--circle); outline-offset:2px; }
+
+  .turn-indicator{ display:flex; align-items:center; gap:8px; margin: 14px 0 12px; font-size:14px; }
+  .turn-dot{ width:10px; height:10px; border-radius:50%; background:currentColor; box-shadow:0 0 8px currentColor; }
+
+  .board{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:14px; transition:opacity .15s; }
+  .board.thinking{ opacity:.55; pointer-events:none; }
+  .cell{
+    aspect-ratio:1/1; background:var(--bg-cell); border:1px solid var(--border); border-radius:8px;
+    font-size:clamp(28px,9vw,40px); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:var(--text-primary); transition: background .15s, opacity .3s; padding:0;
+  }
+  .cell:hover{ background:var(--bg-cell-hover); }
+  .cell:focus-visible{ outline:2px solid var(--circle); outline-offset:2px; }
+  .cell.mark-circle{ color:var(--circle); }
+  .cell.mark-cross{ color:var(--cross); }
+  .cell.fading{ animation: pulse 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){ .cell.fading{ animation:none; opacity:.45; } }
+  @keyframes pulse{ 0%,100%{opacity:.28;} 50%{opacity:.62;} }
+
+  .scoreboard{
+    display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim);
+    margin-bottom:14px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:#13151b;
+  }
+  .scoreboard .circle{ color:var(--circle); }
+  .scoreboard .cross{ color:var(--cross); }
+
+  .rule-note{ font-size:11px; color:var(--text-dim); line-height:1.6; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
+
+  .result-table{ width:100%; font-size:13px; border-collapse:collapse; margin:12px 0; }
+  .result-table td{ padding:6px 4px; border-bottom:1px solid var(--border); color:var(--text-primary); }
+  .result-table td.label{ color:var(--text-dim); }
+  .result-table td.val{ text-align:right; font-family: ui-monospace, monospace; }
+
+  .progress-track{ height:6px; background:#1d212a; border-radius:4px; overflow:hidden; margin:12px 0; }
+  .progress-fill{ height:100%; background:var(--circle); width:0%; transition:width .12s; }
+  .progress-label{ font-size:11px; color:var(--text-dim); text-align:center; }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(4px);
+    background:#1d212a; border:1px solid var(--border); color:var(--text-primary);
+    padding:9px 18px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none;
+    transition:opacity .25s, transform .25s; z-index:20;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
+
+  .win-overlay{ position:fixed; inset:0; background:rgba(8,9,12,.78); display:flex; align-items:center; justify-content:center; padding:20px; z-index:10; }
+  .win-overlay[hidden]{ display:none; }
+  .win-card{ background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:28px 24px; text-align:center; max-width:300px; }
+  .win-card p{ font-size:20px; margin:0 0 18px; }
+  .win-card p.circle{ color:var(--circle); }
+  .win-card p.cross{ color:var(--cross); }
+  .win-card button{ padding:10px 26px; border:none; border-radius:8px; font-weight:600; cursor:pointer; background:var(--circle); color:#101216; font-family:inherit; }
+
+  .title-screen{ display:flex; flex-direction:column; align-items:center; text-align:center; padding:18px 4px 6px; }
+  .title-screen > *{ animation: titleFadeIn .6s ease both; }
+  .title-screen .title-main{ animation-delay:.05s; }
+  .title-screen .title-brand{ animation-delay:.18s; }
+  .title-screen .title-version{ animation-delay:.3s; }
+  .title-screen button{ animation-delay:.45s; }
+  @keyframes titleFadeIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:translateY(0); } }
+  @media (prefers-reduced-motion: reduce){ .title-screen > *{ animation:none; } }
+
+  .title-main{
+    margin:8px 0 0; font-size:clamp(34px,10vw,50px); font-weight:800; letter-spacing:-0.02em; line-height:1.05;
+  }
+  .title-main .accent{ color:var(--circle); }
+  .title-brand{ margin:14px 0 0; font-size:15px; letter-spacing:.18em; color:var(--text-primary); }
+  .title-version{ margin:6px 0 0; font-size:11px; letter-spacing:.08em; color:var(--text-dim); }
+  .title-screen button{ margin-top:30px; }
+</style>
+</head>
+<body>
+
+<!-- ===================== タイトル画面 ===================== -->
+<div class="cabinet" id="titlePanel">
+  <div class="title-screen">
+    <h1 class="title-main mono">3 <span class="accent">In</span> A Row</h1>
+    <p class="title-brand">藤井工藝</p>
+    <p class="title-version mono">Ver.1.0</p>
+    <button class="action wide" id="titleStartBtn">タップして開始</button>
+  </div>
+</div>
+
+<!-- ===================== セットアップ画面 ===================== -->
+<div class="cabinet" id="setupPanel" hidden>
+  <header>
+    <h1>三目並べ <span class="mono">3-MOVE LIMIT</span></h1>
+    <p class="subtitle">同じ印は盤上に3つまで。4つ目を置くと一番古い印が消えます。</p>
+  </header>
+
+  <div class="field">
+    <label class="field-label">モード</label>
+    <div class="segmented" id="modeSeg">
+      <button class="seg-btn active" data-value="pvp">対人</button>
+      <button class="seg-btn" data-value="pvc">対CPU</button>
+      <button class="seg-btn" data-value="sim">シミュレーション</button>
+      <button class="seg-btn" data-value="train">ML学習</button>
+    </div>
+  </div>
+
+  <div class="field" id="pvcOptions" hidden>
+    <label class="field-label">あなたの手番</label>
+    <div class="segmented" id="firstSeg">
+      <button class="seg-btn active" data-value="◯">先攻（◯）</button>
+      <button class="seg-btn" data-value="✖">後攻（✖）</button>
+      <button class="seg-btn" data-value="random">ランダム</button>
+    </div>
+    <label class="field-label" style="margin-top:12px;">CPUの強さ</label>
+    <select id="cpuDifficultySelect" class="select">
+      <option value="random">ランダム（弱）</option>
+      <option value="minimax" selected>ミニマックス（強・先読みAI）</option>
+      <option value="ml">Q学習（学習型・学習量に依存）</option>
+    </select>
+  </div>
+
+  <div class="field" id="simOptions" hidden>
+    <label class="field-label">◯ の戦略</label>
+    <select id="simStrategyO" class="select">
+      <option value="random">ランダム</option>
+      <option value="minimax" selected>ミニマックス（強）</option>
+      <option value="ml">Q学習エージェント</option>
+    </select>
+    <label class="field-label" style="margin-top:12px;">✖ の戦略</label>
+    <select id="simStrategyX" class="select">
+      <option value="random" selected>ランダム</option>
+      <option value="minimax">ミニマックス（強）</option>
+      <option value="ml">Q学習エージェント</option>
+    </select>
+    <label class="field-label" style="margin-top:12px;">対局回数</label>
+    <input type="number" id="simEpisodes" class="select" value="100" min="1" max="2000">
+    <p class="rule-note" style="margin-top:8px;">現在のQテーブルで対局します（このモードではQテーブルは更新されません）。</p>
+  </div>
+
+  <div class="field" id="trainOptions" hidden>
+    <label class="field-label">学習エピソード数（◯×自己対戦）</label>
+    <input type="number" id="trainEpisodes" class="select" value="5000" min="100" max="50000">
+    <p class="rule-note" style="margin-top:8px;">学習は1つのQテーブルを◯側・✖側で共有する自己対戦（self-play）で行います。学習後、ランダムCPU・ミニマックスCPUとの対戦で実力を検証します。</p>
+  </div>
+
+  <button class="action wide" id="startBtn">開始</button>
+
+  <p class="rule-note mono" id="qStatusNote"></p>
+</div>
+
+<!-- ===================== ゲーム画面 ===================== -->
+<div class="cabinet" id="gamePanel" hidden>
+  <button class="back-link" id="backFromGameBtn">← 設定に戻る</button>
+  <header>
+    <h1>三目並べ <span class="mono">3-MOVE LIMIT</span></h1>
+    <p class="subtitle" id="gameModeLabel"></p>
+  </header>
+
+  <div class="turn-indicator mono" id="turnIndicator"></div>
+  <div class="board" id="board" role="grid" aria-label="三目並べの盤面"></div>
+  <div class="scoreboard mono" id="scoreboard"></div>
+
+  <div class="controls">
+    <button class="action" id="saveResetBtn">Save &amp; Reset</button>
+    <button class="action" id="exportAllBtn">Export History</button>
+  </div>
+
+  <p class="rule-note">薄く点滅している印は、その手番のプレイヤーが次に置くと消える印です。対局を終えると CSV（player, hand, timestamp, x, y）がダウンロードされます。</p>
+</div>
+
+<!-- ===================== シミュレーション結果画面 ===================== -->
+<div class="cabinet" id="simResultPanel" hidden>
+  <button class="back-link" id="backFromSimBtn">← 設定に戻る</button>
+  <header><h1 class="mono">SIMULATION RESULT</h1></header>
+  <table class="result-table" id="simResultTable"></table>
+  <div class="controls">
+    <button class="action" id="exportSimBtn">Export Results CSV</button>
+    <button class="action" id="rerunSimBtn">同条件で再実行</button>
+  </div>
+</div>
+
+<!-- ===================== 学習結果画面 ===================== -->
+<div class="cabinet" id="trainResultPanel" hidden>
+  <button class="back-link" id="backFromTrainBtn">← 設定に戻る</button>
+  <header><h1 class="mono">ML TRAINING RESULT</h1></header>
+  <div class="progress-track"><div class="progress-fill" id="trainProgressFill"></div></div>
+  <p class="progress-label mono" id="trainProgressLabel">準備中…</p>
+  <table class="result-table" id="trainResultTable"></table>
+  <div class="controls">
+    <button class="action" id="resetQBtn">学習データをリセット</button>
+    <button class="action" id="rerunTrainBtn">追加学習</button>
+  </div>
+</div>
+
+<div class="win-overlay" id="winOverlay" hidden>
+  <div class="win-card">
+    <p class="mono" id="winText"></p>
+    <button id="playAgainBtn">OK</button>
+  </div>
+</div>
+
+<div class="toast mono" id="toast"></div>
+
+<script>
+'use strict';
+/* =========================================================================
+ * ENGINE — 盤面ロジック / minimax / Q学習（純粋関数、UIに依存しない）
+ * ========================================================================= */
+const WIN_PATTERNS = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+function createInitialState(firstMark){
+  return { marks: Array(9).fill(''), queueO: [], queueX: [], turn: firstMark || '◯' };
+}
+function cloneState(s){
+  return { marks: s.marks.slice(), queueO: s.queueO.slice(), queueX: s.queueX.slice(), turn: s.turn };
+}
+function emptyCells(state){
+  const r = [];
+  for(let i=0;i<9;i++) if(!state.marks[i]) r.push(i);
+  return r;
+}
+function checkWinner(marks){
+  for(const p of WIN_PATTERNS){
+    if(marks[p[0]] && marks[p[0]] === marks[p[1]] && marks[p[1]] === marks[p[2]]) return marks[p[0]];
+  }
+  return null;
+}
+function applyMove(state, cellIndex){
+  if(state.marks[cellIndex]) throw new Error('occupied cell: ' + cellIndex);
+  const next = cloneState(state);
+  const mark = next.turn;
+  next.marks[cellIndex] = mark;
+  const qKey = mark === '◯' ? 'queueO' : 'queueX';
+  next[qKey].push(cellIndex);
+  let removedIndex = null;
+  if(next[qKey].length > 3){
+    removedIndex = next[qKey].shift();
+    next.marks[removedIndex] = '';
+  }
+  const winner = checkWinner(next.marks);
+  if(!winner){ next.turn = mark === '◯' ? '✖' : '◯'; }
+  return { state: next, winner, removedIndex };
+}
+function absoluteKey(state){ return state.queueO.join('-') + '|' + state.queueX.join('-') + '|' + state.turn; }
+function moverKey(state){
+  const myQ = state.turn === '◯' ? state.queueO : state.queueX;
+  const oppQ = state.turn === '◯' ? state.queueX : state.queueO;
+  return myQ.join('-') + '/' + oppQ.join('-');
+}
+function evaluateHeuristic(marks, forMark){
+  const opp = forMark === '◯' ? '✖' : '◯';
+  let score = 0;
+  for(const p of WIN_PATTERNS){
+    const vals = [marks[p[0]], marks[p[1]], marks[p[2]]];
+    const mine = vals.filter(v => v === forMark).length;
+    const theirs = vals.filter(v => v === opp).length;
+    if(theirs === 0){ if(mine === 1) score += 1; else if(mine === 2) score += 10; }
+    if(mine === 0){ if(theirs === 1) score -= 1; else if(theirs === 2) score -= 10; }
+  }
+  if(marks[4] === forMark) score += 3;
+  if(marks[4] === opp) score -= 3;
+  return score;
+}
+function randomMove(state, rng){
+  rng = rng || Math.random;
+  const cells = emptyCells(state);
+  return cells[Math.floor(rng() * cells.length)];
+}
+function orderMoves(cells){ return cells.slice().sort((a,b) => (a === 4 ? -1 : 0) - (b === 4 ? -1 : 0)); }
+function minimaxValue(state, depth, alpha, beta, deadline){
+  const cells = emptyCells(state);
+  if(depth === 0 || (deadline && Date.now() > deadline)){ return evaluateHeuristic(state.marks, '◯'); }
+  const maximizing = state.turn === '◯';
+  let value = maximizing ? -Infinity : Infinity;
+  for(const cell of orderMoves(cells)){
+    const { state: ns, winner } = applyMove(state, cell);
+    let childVal;
+    if(winner){ childVal = winner === '◯' ? (10000 - (10 - depth)) : -(10000 - (10 - depth)); }
+    else { childVal = minimaxValue(ns, depth - 1, alpha, beta, deadline); }
+    if(maximizing){ if(childVal > value) value = childVal; if(value > alpha) alpha = value; }
+    else { if(childVal < value) value = childVal; if(value < beta) beta = value; }
+    if(alpha >= beta) break;
+  }
+  return value;
+}
+function chooseMinimaxMove(state, depthLimit, timeLimitMs){
+  depthLimit = depthLimit || 7;
+  const cells = emptyCells(state);
+  if(cells.length === 1) return cells[0];
+  const deadline = timeLimitMs ? (Date.now() + timeLimitMs) : null;
+  const maximizing = state.turn === '◯';
+  let bestCell = cells[0];
+  let bestVal = maximizing ? -Infinity : Infinity;
+  for(const cell of orderMoves(cells)){
+    const { state: ns, winner } = applyMove(state, cell);
+    let val;
+    if(winner){ val = winner === '◯' ? 9999 : -9999; }
+    else { val = minimaxValue(ns, depthLimit - 1, -Infinity, Infinity, deadline); }
+    if(maximizing ? val > bestVal : val < bestVal){ bestVal = val; bestCell = cell; }
+  }
+  return bestCell;
+}
+function getQRow(qtable, key){ if(!qtable[key]) qtable[key] = {}; return qtable[key]; }
+function maxQForState(qtable, state){
+  const row = qtable[moverKey(state)];
+  if(!row) return 0;
+  const cells = emptyCells(state);
+  let m = -Infinity, any = false;
+  for(const c of cells){ if(row[c] !== undefined){ any = true; if(row[c] > m) m = row[c]; } }
+  return any ? m : 0;
+}
+function chooseQAction(state, qtable, epsilon, rng){
+  rng = rng || Math.random;
+  const cells = emptyCells(state);
+  if(epsilon > 0 && rng() < epsilon) return cells[Math.floor(rng() * cells.length)];
+  const row = qtable[moverKey(state)];
+  if(!row) return cells[Math.floor(rng() * cells.length)];
+  let best = [], bestVal = -Infinity;
+  for(const c of cells){
+    const v = row[c] !== undefined ? row[c] : 0;
+    if(v > bestVal){ bestVal = v; best = [c]; }
+    else if(v === bestVal){ best.push(c); }
+  }
+  return best[Math.floor(rng() * best.length)];
+}
+function qUpdate(qtable, key, action, target, alpha){
+  const row = getQRow(qtable, key);
+  const cur = row[action] !== undefined ? row[action] : 0;
+  row[action] = cur + alpha * (target - cur);
+}
+function trainEpisode(qtable, opts){
+  const alpha = opts.alpha, gamma = opts.gamma, epsilon = opts.epsilon;
+  const rng = opts.rng || Math.random;
+  const maxPlies = opts.maxPlies || 60;
+  let state = createInitialState('◯');
+  const seen = new Set([absoluteKey(state)]);
+  for(let plies = 0; plies < maxPlies; plies++){
+    const key = moverKey(state);
+    const action = chooseQAction(state, qtable, epsilon, rng);
+    const { state: ns, winner } = applyMove(state, action);
+    if(winner){ qUpdate(qtable, key, action, 1, alpha); return { winner, plies: plies + 1 }; }
+    const ak = absoluteKey(ns);
+    if(seen.has(ak)){ qUpdate(qtable, key, action, 0, alpha); return { winner: null, plies: plies + 1, reason: 'cycle' }; }
+    seen.add(ak);
+    const bootstrap = -maxQForState(qtable, ns);
+    qUpdate(qtable, key, action, gamma * bootstrap, alpha);
+    state = ns;
+  }
+  return { winner: null, plies: maxPlies, reason: 'cap' };
+}
+function simulateGame(stratO, stratX, maxPlies){
+  maxPlies = maxPlies || 60;
+  let state = createInitialState('◯');
+  const seen = new Set([absoluteKey(state)]);
+  for(let plies = 0; plies < maxPlies; plies++){
+    const strat = state.turn === '◯' ? stratO : stratX;
+    const action = strat(state);
+    const { state: ns, winner } = applyMove(state, action);
+    if(winner) return { winner, plies: plies + 1 };
+    const ak = absoluteKey(ns);
+    if(seen.has(ak)) return { winner: null, plies: plies + 1, reason: 'cycle' };
+    seen.add(ak);
+    state = ns;
+  }
+  return { winner: null, plies: maxPlies, reason: 'cap' };
+}
+
+/* =========================================================================
+ * UI / アプリケーション層
+ * ========================================================================= */
+(function(){
+
+  const LS_QTABLE_KEY = 'tictactoe_qtable_v1';
+  const LS_LOGS_KEY = 'tictactoe_session_logs';
+  const MAX_LIVE_PLIES = 80;
+
+  function loadQtable(){ try{ return JSON.parse(localStorage.getItem(LS_QTABLE_KEY) || '{}'); } catch(e){ return {}; } }
+  function persistQtable(){ localStorage.setItem(LS_QTABLE_KEY, JSON.stringify(qtable)); }
+  let qtable = loadQtable();
+
+  // ---- DOM refs -------------------------------------------------
+  const titlePanel = document.getElementById('titlePanel');
+  const titleStartBtn = document.getElementById('titleStartBtn');
+  const setupPanel = document.getElementById('setupPanel');
+  const gamePanel = document.getElementById('gamePanel');
+  const simResultPanel = document.getElementById('simResultPanel');
+  const trainResultPanel = document.getElementById('trainResultPanel');
+
+  const modeSeg = document.getElementById('modeSeg');
+  const firstSeg = document.getElementById('firstSeg');
+  const pvcOptions = document.getElementById('pvcOptions');
+  const simOptions = document.getElementById('simOptions');
+  const trainOptions = document.getElementById('trainOptions');
+  const cpuDifficultySelect = document.getElementById('cpuDifficultySelect');
+  const simStrategyO = document.getElementById('simStrategyO');
+  const simStrategyX = document.getElementById('simStrategyX');
+  const simEpisodesInput = document.getElementById('simEpisodes');
+  const trainEpisodesInput = document.getElementById('trainEpisodes');
+  const startBtn = document.getElementById('startBtn');
+  const qStatusNote = document.getElementById('qStatusNote');
+
+  const gameModeLabel = document.getElementById('gameModeLabel');
+  const boardEl = document.getElementById('board');
+  const turnIndicatorEl = document.getElementById('turnIndicator');
+  const scoreboardEl = document.getElementById('scoreboard');
+  const saveResetBtn = document.getElementById('saveResetBtn');
+  const exportAllBtn = document.getElementById('exportAllBtn');
+  const backFromGameBtn = document.getElementById('backFromGameBtn');
+  const winOverlayEl = document.getElementById('winOverlay');
+  const winTextEl = document.getElementById('winText');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const toastEl = document.getElementById('toast');
+
+  const simResultTable = document.getElementById('simResultTable');
+  const exportSimBtn = document.getElementById('exportSimBtn');
+  const rerunSimBtn = document.getElementById('rerunSimBtn');
+  const backFromSimBtn = document.getElementById('backFromSimBtn');
+
+  const trainResultTable = document.getElementById('trainResultTable');
+  const trainProgressFill = document.getElementById('trainProgressFill');
+  const trainProgressLabel = document.getElementById('trainProgressLabel');
+  const resetQBtn = document.getElementById('resetQBtn');
+  const rerunTrainBtn = document.getElementById('rerunTrainBtn');
+  const backFromTrainBtn = document.getElementById('backFromTrainBtn');
+
+  const cellEls = [];
+  for(let i=0;i<9;i++){
+    const btn = document.createElement('button');
+    btn.className = 'cell';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', `セル ${i+1}`);
+    btn.addEventListener('click', () => onCellClick(i));
+    boardEl.appendChild(btn);
+    cellEls.push(btn);
+  }
+
+  // ---- audio -------------------------------------------------
+  let audioCtx = null;
+  function ensureAudio(){
+    if(!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    if(audioCtx.state === 'suspended'){ audioCtx.resume(); }
+  }
+  function tone(freq, start, duration, type, peak){
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(peak, start + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(start); osc.stop(start + duration + 0.02);
+  }
+  function playClick(){ ensureAudio(); const t=audioCtx.currentTime; tone(880,t,0.06,'square',0.08); }
+  function playWin(){ ensureAudio(); const t=audioCtx.currentTime; tone(523.25,t,0.12,'triangle',0.12); tone(659.25,t+0.12,0.12,'triangle',0.12); tone(783.99,t+0.24,0.18,'triangle',0.14); }
+  function playDraw(){ ensureAudio(); const t=audioCtx.currentTime; tone(330,t,0.18,'sine',0.07); }
+
+  // ---- helpers -------------------------------------------------
+  function pad(n){ return n.toString().padStart(2,'0'); }
+  function formatTimestamp(d){ return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
+  function formatTimestampForFilename(d){ return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=> toastEl.classList.remove('show'), 1700);
+  }
+  function downloadCSV(filename, header, rows){
+    const lines = [header.join(','), ...rows.map(r => r.join(','))];
+    const csv = '\uFEFF' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function loadAllLogs(){ try{ return JSON.parse(localStorage.getItem(LS_LOGS_KEY) || '[]'); } catch(e){ return []; } }
+  function persistSessionLog(rows){
+    const all = loadAllLogs();
+    all.push(rows);
+    localStorage.setItem(LS_LOGS_KEY, JSON.stringify(all));
+    updateExportButtonState();
+  }
+  function updateExportButtonState(){ exportAllBtn.disabled = loadAllLogs().length === 0; }
+  function updateQStatusNote(){
+    const n = Object.keys(qtable).length;
+    qStatusNote.textContent = `Qテーブル学習済み局面数: ${n}（ブラウザに保存されています）`;
+  }
+  function panelShow(el){ el.hidden = false; }
+  function panelHide(el){ el.hidden = true; }
+  function showOnly(panel){
+    [titlePanel, setupPanel, gamePanel, simResultPanel, trainResultPanel].forEach(p => p.hidden = (p !== panel));
+  }
+  titleStartBtn.addEventListener('click', () => showOnly(setupPanel));
+
+  function strategyFor(kind, depthLimit, timeLimitMs){
+    if(kind === 'random') return (s) => randomMove(s);
+    if(kind === 'minimax') return (s) => chooseMinimaxMove(s, depthLimit || 6, timeLimitMs || 80);
+    if(kind === 'ml') return (s) => chooseQAction(s, qtable, 0);
+    return (s) => randomMove(s);
+  }
+
+  /* ===================== セットアップ画面の挙動 ===================== */
+  let currentMode = 'pvp';
+  let humanFirstChoice = '◯';
+
+  modeSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if(!btn) return;
+    currentMode = btn.dataset.value;
+    [...modeSeg.children].forEach(b => b.classList.toggle('active', b === btn));
+    panelHide(pvcOptions); panelHide(simOptions); panelHide(trainOptions);
+    if(currentMode === 'pvc') panelShow(pvcOptions);
+    if(currentMode === 'sim') panelShow(simOptions);
+    if(currentMode === 'train') panelShow(trainOptions);
+    startBtn.textContent = currentMode === 'sim' ? '実行' : (currentMode === 'train' ? '学習を実行' : '開始');
+  });
+  firstSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if(!btn) return;
+    humanFirstChoice = btn.dataset.value;
+    [...firstSeg.children].forEach(b => b.classList.toggle('active', b === btn));
+  });
+
+  startBtn.addEventListener('click', () => {
+    if(currentMode === 'pvp' || currentMode === 'pvc') startLiveGame();
+    else if(currentMode === 'sim') runSimulation();
+    else if(currentMode === 'train') runTraining();
+  });
+
+  backFromGameBtn.addEventListener('click', () => showOnly(setupPanel));
+  backFromSimBtn.addEventListener('click', () => showOnly(setupPanel));
+  backFromTrainBtn.addEventListener('click', () => showOnly(setupPanel));
+
+  /* ===================== 対人 / 対CPU ===================== */
+  let game = createInitialState('◯');
+  let sessionLog = [];
+  let seenStates = new Set();
+  let humanMark = null;   // pvc時のみ使用。null=対人
+  let cpuMark = null;
+  let cpuKind = 'minimax';
+
+  function startLiveGame(){
+    game = createInitialState('◯');
+    sessionLog = [];
+    seenStates = new Set([absoluteKey(game)]);
+
+    if(currentMode === 'pvc'){
+      cpuKind = cpuDifficultySelect.value;
+      let resolved = humanFirstChoice;
+      if(resolved === 'random') resolved = Math.random() < 0.5 ? '◯' : '✖';
+      humanMark = resolved;
+      cpuMark = humanMark === '◯' ? '✖' : '◯';
+      const diffLabel = { random:'ランダム', minimax:'ミニマックス（強）', ml:'Q学習（学習型）' }[cpuKind];
+      gameModeLabel.textContent = `対CPU — あなた: ${humanMark} / CPU: ${cpuMark}（${diffLabel}）`;
+    } else {
+      humanMark = null; cpuMark = null;
+      gameModeLabel.textContent = '対人モード';
+    }
+
+    renderBoard();
+    updateTurnIndicator();
+    showOnly(gamePanel);
+    maybeTriggerCpuMove();
+  }
+
+  function renderBoard(){
+    game.marks.forEach((mark, i) => {
+      const el = cellEls[i];
+      el.textContent = mark;
+      el.classList.toggle('mark-circle', mark === '◯');
+      el.classList.toggle('mark-cross', mark === '✖');
+      el.classList.remove('fading');
+    });
+    ['◯','✖'].forEach(mark => {
+      const q = mark === '◯' ? game.queueO : game.queueX;
+      if(q.length === 3) cellEls[q[0]].classList.add('fading');
+    });
+    scoreboardEl.innerHTML =
+      `<span class="circle">◯ ${game.queueO.length}/3</span>` +
+      `<span class="cross">✖ ${game.queueX.length}/3</span>`;
+  }
+  function updateTurnIndicator(){
+    const color = game.turn === '◯' ? 'var(--circle)' : 'var(--cross)';
+    let label = `${game.turn} のターン`;
+    if(currentMode === 'pvc' && game.turn === cpuMark) label = 'CPU 思考中…';
+    turnIndicatorEl.innerHTML =
+      `<span class="turn-dot" style="color:${color}"></span><span style="color:${color}">${label}</span>`;
+  }
+
+  function onCellClick(i){
+    if(game.marks[i]) return;
+    if(currentMode === 'pvc' && game.turn === cpuMark) return; // CPUの手番中はクリック無効
+    doMove(i);
+  }
+
+  function doMove(i){
+    playClick();
+    const mark = game.turn;
+    const playerId = mark === '◯' ? '0' : '1';
+    const x = i % 3, y = Math.floor(i / 3);
+    sessionLog.push([playerId, mark, formatTimestamp(new Date()), x, y]);
+
+    const { state: ns, winner } = applyMove(game, i);
+    game = ns;
+    renderBoard();
+
+    if(winner){ playWin(); finalizeAndShowResult(`${winner} の勝利！`, winner === '◯' ? 'circle' : 'cross'); return; }
+
+    const ak = absoluteKey(game);
+    if(seenStates.has(ak) || sessionLog.length >= MAX_LIVE_PLIES){
+      playDraw(); finalizeAndShowResult('引き分け（盤面ループ検出）', ''); return;
+    }
+    seenStates.add(ak);
+
+    updateTurnIndicator();
+    maybeTriggerCpuMove();
+  }
+
+  function maybeTriggerCpuMove(){
+    if(currentMode !== 'pvc') return;
+    if(game.turn !== cpuMark) return;
+    boardEl.classList.add('thinking');
+    updateTurnIndicator();
+    setTimeout(() => {
+      let action;
+      if(cpuKind === 'random') action = randomMove(game);
+      else if(cpuKind === 'minimax') action = chooseMinimaxMove(game, 7, 180);
+      else action = chooseQAction(game, qtable, 0);
+      boardEl.classList.remove('thinking');
+      doMove(action);
+    }, 380);
+  }
+
+  function finalizeAndShowResult(text, colorClass){
+    const filename = `game_log_${formatTimestampForFilename(new Date())}.csv`;
+    if(sessionLog.length > 0){
+      downloadCSV(filename, ['player','hand','timestamp','x','y'], sessionLog);
+      persistSessionLog(sessionLog);
+    }
+    winTextEl.textContent = text;
+    winTextEl.classList.toggle('circle', colorClass === 'circle');
+    winTextEl.classList.toggle('cross', colorClass === 'cross');
+    winOverlayEl.hidden = false;
+  }
+  playAgainBtn.addEventListener('click', () => { winOverlayEl.hidden = true; startLiveGame(); });
+
+  saveResetBtn.addEventListener('click', () => {
+    if(sessionLog.length === 0){ showToast('保存する手がありません'); return; }
+    const filename = `game_log_${formatTimestampForFilename(new Date())}.csv`;
+    downloadCSV(filename, ['player','hand','timestamp','x','y'], sessionLog);
+    persistSessionLog(sessionLog);
+    showToast('保存してリセットしました');
+    startLiveGame();
+  });
+  exportAllBtn.addEventListener('click', () => {
+    const all = loadAllLogs();
+    if(all.length === 0) return;
+    const rows = [];
+    all.forEach((session, idx) => { session.forEach(r => rows.push([idx + 1, ...r])); });
+    downloadCSV(`tictactoe_history_${formatTimestampForFilename(new Date())}.csv`, ['game_no','player','hand','timestamp','x','y'], rows);
+  });
+
+  /* ===================== シミュレーションモード ===================== */
+  let lastSimResults = [];
+  rerunSimBtn.addEventListener('click', runSimulation);
+
+  function runSimulation(){
+    const kindO = simStrategyO.value, kindX = simStrategyX.value;
+    const n = Math.max(1, Math.min(2000, parseInt(simEpisodesInput.value, 10) || 1));
+    const stratO = strategyFor(kindO, 5, 60);
+    const stratX = strategyFor(kindX, 5, 60);
+
+    let oWin=0, xWin=0, draw=0, totalPlies=0;
+    lastSimResults = [];
+    const BATCH = 25;
+    let i = 0;
+
+    showOnly(simResultPanel);
+    simResultTable.innerHTML = `<tr><td class="label">実行中…</td><td class="val">0 / ${n}</td></tr>`;
+
+    function step(){
+      const end = Math.min(i + BATCH, n);
+      for(; i < end; i++){
+        const res = simulateGame(stratO, stratX, 80);
+        if(res.winner === '◯') oWin++; else if(res.winner === '✖') xWin++; else draw++;
+        totalPlies += res.plies;
+        lastSimResults.push([i+1, res.winner || 'draw', res.plies]);
+      }
+      simResultTable.innerHTML = `<tr><td class="label">進行</td><td class="val">${i} / ${n}</td></tr>`;
+      if(i < n){ setTimeout(step, 0); }
+      else { renderSimResult(kindO, kindX, n, oWin, xWin, draw, totalPlies); }
+    }
+    step();
+  }
+
+  function renderSimResult(kindO, kindX, n, oWin, xWin, draw, totalPlies){
+    const label = { random:'ランダム', minimax:'ミニマックス', ml:'Q学習' };
+    simResultTable.innerHTML = `
+      <tr><td class="label">対戦条件</td><td class="val">◯=${label[kindO]} / ✖=${label[kindX]}</td></tr>
+      <tr><td class="label">対局数</td><td class="val">${n}</td></tr>
+      <tr><td class="label">◯ の勝ち</td><td class="val">${oWin}（${(oWin/n*100).toFixed(1)}%）</td></tr>
+      <tr><td class="label">✖ の勝ち</td><td class="val">${xWin}（${(xWin/n*100).toFixed(1)}%）</td></tr>
+      <tr><td class="label">引き分け（ループ/上限）</td><td class="val">${draw}（${(draw/n*100).toFixed(1)}%）</td></tr>
+      <tr><td class="label">平均手数</td><td class="val">${(totalPlies/n).toFixed(1)}</td></tr>
+    `;
+    exportSimBtn.disabled = false;
+  }
+
+  exportSimBtn.addEventListener('click', () => {
+    if(lastSimResults.length === 0) return;
+    downloadCSV(`tictactoe_simulation_${formatTimestampForFilename(new Date())}.csv`,
+      ['game_no','winner','plies'], lastSimResults);
+  });
+
+  /* ===================== ML学習モード（Q学習） ===================== */
+  rerunTrainBtn.addEventListener('click', runTraining);
+  resetQBtn.addEventListener('click', () => {
+    qtable = {};
+    persistQtable();
+    updateQStatusNote();
+    showToast('学習データをリセットしました');
+  });
+
+  function runTraining(){
+    const n = Math.max(100, Math.min(50000, parseInt(trainEpisodesInput.value, 10) || 5000));
+    showOnly(trainResultPanel);
+    trainResultTable.innerHTML = '';
+    trainProgressFill.style.width = '0%';
+    trainProgressLabel.textContent = `学習中… 0 / ${n}`;
+
+    const BATCH = 300;
+    let i = 0;
+    function step(){
+      const end = Math.min(i + BATCH, n);
+      for(; i < end; i++){
+        const epsilon = Math.max(0.04, 0.3 * (1 - i / n));
+        trainEpisode(qtable, { alpha:0.3, gamma:0.9, epsilon, maxPlies:60 });
+      }
+      trainProgressFill.style.width = `${(i/n*100).toFixed(0)}%`;
+      trainProgressLabel.textContent = `学習中… ${i} / ${n}`;
+      if(i < n){ setTimeout(step, 0); }
+      else { persistQtable(); updateQStatusNote(); runBenchmark(n); }
+    }
+    step();
+  }
+
+  function runBenchmark(episodesTrained){
+    trainProgressLabel.textContent = 'ベンチマーク実行中…（ランダム・ミニマックスと対戦）';
+    setTimeout(() => {
+      const greedyQ = (s) => chooseQAction(s, qtable, 0);
+      const rnd = (s) => randomMove(s);
+      const mmx = (s) => chooseMinimaxMove(s, 5, 50);
+
+      function tally(n, stratO, stratX){
+        let w=0,l=0,d=0;
+        for(let k=0;k<n;k++){
+          const res = simulateGame(stratO, stratX, 80);
+          if(res.winner==='◯') w++; else if(res.winner==='✖') l++; else d++;
+        }
+        return {w,l,d};
+      }
+      const vsRandomAsO = tally(120, greedyQ, rnd);
+      const vsRandomAsX = tally(120, rnd, greedyQ);
+      const vsMinimaxAsO = tally(60, greedyQ, mmx);
+      const vsMinimaxAsX = tally(60, mmx, greedyQ);
+
+      trainProgressFill.style.width = '100%';
+      trainProgressLabel.textContent = `学習完了（累計 ${episodesTrained} エピソード分を今回実行）`;
+
+      const states = Object.keys(qtable).length;
+      trainResultTable.innerHTML = `
+        <tr><td class="label">学習済み局面数</td><td class="val">${states}</td></tr>
+        <tr><td class="label">vs ランダム（Q学習=◯）</td><td class="val">${vsRandomAsO.w}勝 ${vsRandomAsO.l}敗 ${vsRandomAsO.d}分</td></tr>
+        <tr><td class="label">vs ランダム（Q学習=✖）</td><td class="val">${vsRandomAsX.l}勝 ${vsRandomAsX.w}敗 ${vsRandomAsX.d}分</td></tr>
+        <tr><td class="label">vs ミニマックス（Q学習=◯）</td><td class="val">${vsMinimaxAsO.w}勝 ${vsMinimaxAsO.l}敗 ${vsMinimaxAsO.d}分</td></tr>
+        <tr><td class="label">vs ミニマックス（Q学習=✖）</td><td class="val">${vsMinimaxAsX.l}勝 ${vsMinimaxAsX.w}敗 ${vsMinimaxAsX.d}分</td></tr>
+      `;
+    }, 30);
+  }
+
+  /* ===================== 初期化 ===================== */
+  updateExportButtonState();
+  updateQStatusNote();
+  showOnly(titlePanel);
+})();
+</script>
+</body>
+</html>
